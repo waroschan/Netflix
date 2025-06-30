@@ -41,7 +41,7 @@
             justify-content: center;
             flex-wrap: wrap;
         }
-        .filters select {
+        .filters select, .filters input[type="text"] {
             padding: 8px;
             border-radius: 5px;
             border: 1px solid #555;
@@ -117,6 +117,7 @@
             <select id="yearFilter"></select>
             <label for="monthFilter">月:</label>
             <select id="monthFilter"></select>
+            <input type="text" id="titleSearch" placeholder="タイトルを検索">
         </div>
         <table>
             <thead>
@@ -18343,11 +18344,18 @@
                 const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
                 const day = parseInt(parts[2], 10);
 
-                // If the year is 2-digit, convert it to 4-digit based on a threshold
-                // This is a common heuristic: years < 70 are 20xx, years >= 70 are 19xx
-                let fullYear = year;
-                if (year < 100) {
-                    fullYear = (year < 70) ? (2000 + year) : (1900 + year);
+                let fullYear;
+                // Heuristic for 2-digit years: if year is 00-current_year_last_two_digits, assume 20xx; otherwise 19xx
+                // This is a common way to handle 2-digit years to avoid issues with future dates.
+                const currentYearLastTwoDigits = new Date().getFullYear() % 100;
+                if (year >= 0 && year <= 99) {
+                    if (year > currentYearLastTwoDigits + 10) { // Adjust threshold to avoid future dates being 19xx
+                        fullYear = 1900 + year;
+                    } else {
+                        fullYear = 2000 + year;
+                    }
+                } else { // Already a 4-digit year or invalid
+                    fullYear = year;
                 }
                 return new Date(fullYear, month, day);
             }
@@ -18407,23 +18415,13 @@
                     return 0;
                 }
             });
-            renderTableRows(allRowsData.filter(row => {
-                const selectedYear = yearFilter.value;
-                const selectedMonth = monthFilter.value;
-
-                const rowYear = row.dateObject.getFullYear().toString();
-                const rowMonth = row.dateObject.getMonth().toString();
-
-                const yearMatch = (selectedYear === "all" || rowYear === selectedYear);
-                const monthMatch = (selectedMonth === "all" || rowMonth === selectedMonth);
-
-                return yearMatch && monthMatch;
-            }));
+            applyFilter(); // Re-apply filter after sorting
         }
 
         // Filtering functionality
         const yearFilter = document.getElementById('yearFilter');
         const monthFilter = document.getElementById('monthFilter');
+        const titleSearch = document.getElementById('titleSearch');
 
         function populateFilters() {
             const years = new Set();
@@ -18459,20 +18457,24 @@
             // Add event listeners for filtering
             yearFilter.addEventListener('change', applyFilter);
             monthFilter.addEventListener('change', applyFilter);
+            titleSearch.addEventListener('keyup', applyFilter); // Filter on keyup
         }
 
         function applyFilter() {
             const selectedYear = yearFilter.value;
             const selectedMonth = monthFilter.value;
+            const searchText = titleSearch.value.toLowerCase(); // Get search text and convert to lower case
 
             const filteredRows = allRowsData.filter(rowData => {
                 const rowYear = rowData.dateObject.getFullYear().toString();
                 const rowMonth = rowData.dateObject.getMonth().toString(); // 0-indexed
+                const rowTitle = rowData.titleText.toLowerCase(); // Get title text and convert to lower case
 
                 const yearMatch = (selectedYear === "all" || rowYear === selectedYear);
                 const monthMatch = (selectedMonth === "all" || rowMonth === selectedMonth);
+                const titleMatch = rowTitle.includes(searchText); // Check if title includes search text
 
-                return yearMatch && monthMatch;
+                return yearMatch && monthMatch && titleMatch;
             });
             renderTableRows(filteredRows);
         }
