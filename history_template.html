@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netflix視聴履歴</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #141414; /* Dark background */
+            color: #E0E0E0; /* Light text color */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        h1 {
+            text-align: center;
+            color: #E50914; /* Netflix Red */
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        .container {
+            width: 100%;
+            max-width: 900px; /* Max width for content */
+            background-color: #222222; /* Slightly lighter dark background */
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            padding: 30px;
+            box-sizing: border-box;
+        }
+        .filters {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .filters select {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #333;
+            color: #E0E0E0;
+            font-size: 1em;
+        }
+        table {
+            width: 100%;
+            border-collapse: separate; /* Use separate for rounded corners */
+            border-spacing: 0;
+            margin-top: 20px;
+            overflow: hidden; /* Ensures rounded corners apply */
+        }
+        th, td {
+            padding: 15px 20px;
+            text-align: left;
+            border-bottom: 1px solid #333; /* Darker border */
+        }
+        thead th {
+            background-color: #E50914; /* Netflix Red */
+            color: #fff;
+            position: sticky;
+            top: 0;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: pointer; /* Indicate clickable */
+        }
+        thead th:hover {
+            background-color: #FF0000; /* Slightly brighter red on hover */
+        }
+        tbody tr {
+            background-color: #2C2C2C; /* Darker row */
+            transition: background-color 0.3s ease;
+        }
+        tbody tr:nth-child(even) {
+            background-color: #3A3A3A; /* Slightly lighter striped row */
+        }
+        tbody tr:hover {
+            background-color: #4A4A4A; /* Hover effect */
+        }
+        a {
+            color: #00BFFF; /* Bright blue for links */
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        a:hover {
+            color: #00FFFF; /* Lighter blue on hover */
+            text-decoration: underline;
+        }
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            h1 {
+                font-size: 2em;
+            }
+            .container {
+                padding: 15px;
+            }
+            th, td {
+                padding: 10px 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Netflix視聴履歴</h1>
+        <div class="filters">
+            <label for="yearFilter">年:</label>
+            <select id="yearFilter"></select>
+            <label for="monthFilter">月:</label>
+            <select id="monthFilter"></select>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th onclick="sortTable(0)">タイトル</th>
+                    <th onclick="sortTable(1)">視聴日</th>
+                </tr>
+            </thead>
+            <tbody id="historyTableBody">
+<!-- HISTORY_ROWS_PLACEHOLDER -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let currentSortColumn = -1;
+        let sortDirection = {}; // To store sort direction for each column
+        let allRowsData = []; // Store all rows data for efficient sorting and filtering
+
+        // Helper function to parse date strings into Date objects
+        const parseDate = (dateString) => {
+            const parts = dateString.split('/');
+            if (parts.length === 3) {
+                const year = parseInt(parts[0], 10); // Assuming YYYY format from Python now
+                const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+                const day = parseInt(parts[2], 10);
+
+                // If the year is 2-digit, convert it to 4-digit based on a threshold
+                // This is a common heuristic: years < 70 are 20xx, years >= 70 are 19xx
+                let fullYear = year;
+                if (year < 100) {
+                    fullYear = (year < 70) ? (2000 + year) : (1900 + year);
+                }
+                return new Date(fullYear, month, day);
+            }
+            return new Date(dateString); // Fallback for other formats
+        };
+
+        // Function to render rows to the table body
+        function renderTableRows(rowsToRender) {
+            const tableBody = document.getElementById('historyTableBody');
+            tableBody.innerHTML = ''; // Clear existing rows
+            rowsToRender.forEach(rowData => {
+                const row = tableBody.insertRow();
+                const titleCell = row.insertCell();
+                titleCell.innerHTML = rowData.linkedTitle; // Use innerHTML for the link
+                const dateCell = row.insertCell();
+                dateCell.textContent = rowData.date; // Use textContent for date
+            });
+        }
+
+        // Initial data load and store
+        document.addEventListener('DOMContentLoaded', () => {
+            const tableBody = document.getElementById('historyTableBody');
+            Array.from(tableBody.rows).forEach(row => {
+                const titleCell = row.getElementsByTagName("TD")[0];
+                const dateCell = row.getElementsByTagName("TD")[1];
+                allRowsData.push({
+                    linkedTitle: titleCell.innerHTML, // Store HTML for the link
+                    titleText: titleCell.querySelector('a') ? titleCell.querySelector('a').innerText : titleCell.innerText, // Store plain text for sorting
+                    date: dateCell.innerText,
+                    dateObject: parseDate(dateCell.innerText)
+                });
+            });
+            populateFilters();
+            applyFilter(); // Apply initial filter (all years/months)
+        });
+
+        function sortTable(n) {
+            const isAsc = sortDirection[n] === "asc";
+            sortDirection[n] = isAsc ? "desc" : "asc"; // Toggle direction
+
+            allRowsData.sort((a, b) => {
+                let valA, valB;
+
+                if (n === 0) { // Title column
+                    valA = a.titleText;
+                    valB = b.titleText;
+                } else if (n === 1) { // Date column
+                    valA = a.dateObject;
+                    valB = b.dateObject;
+                }
+
+                if (valA < valB) {
+                    return isAsc ? -1 : 1;
+                } else if (valA > valB) {
+                    return isAsc ? 1 : -1;
+                } else {
+                    return 0;
+                }
+            });
+            renderTableRows(allRowsData.filter(row => {
+                const selectedYear = yearFilter.value;
+                const selectedMonth = monthFilter.value;
+
+                const rowYear = row.dateObject.getFullYear().toString();
+                const rowMonth = row.dateObject.getMonth().toString();
+
+                const yearMatch = (selectedYear === "all" || rowYear === selectedYear);
+                const monthMatch = (selectedMonth === "all" || rowMonth === selectedMonth);
+
+                return yearMatch && monthMatch;
+            }));
+        }
+
+        // Filtering functionality
+        const yearFilter = document.getElementById('yearFilter');
+        const monthFilter = document.getElementById('monthFilter');
+
+        function populateFilters() {
+            const years = new Set();
+            const months = new Set();
+            const monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+
+            allRowsData.forEach(rowData => {
+                const date = rowData.dateObject;
+                if (!isNaN(date)) { // Check if date is valid
+                    years.add(date.getFullYear());
+                    months.add(date.getMonth()); // 0-indexed month
+                }
+            });
+
+            // Populate Year Filter
+            yearFilter.innerHTML = '<option value="all">全ての年</option>';
+            Array.from(years).sort().forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                yearFilter.appendChild(option);
+            });
+
+            // Populate Month Filter
+            monthFilter.innerHTML = '<option value="all">全ての月</option>';
+            Array.from(months).sort((a, b) => a - b).forEach(monthIndex => {
+                const option = document.createElement('option');
+                option.value = monthIndex;
+                option.textContent = monthNames[monthIndex];
+                monthFilter.appendChild(option);
+            });
+
+            // Add event listeners for filtering
+            yearFilter.addEventListener('change', applyFilter);
+            monthFilter.addEventListener('change', applyFilter);
+        }
+
+        function applyFilter() {
+            const selectedYear = yearFilter.value;
+            const selectedMonth = monthFilter.value;
+
+            const filteredRows = allRowsData.filter(rowData => {
+                const rowYear = rowData.dateObject.getFullYear().toString();
+                const rowMonth = rowData.dateObject.getMonth().toString(); // 0-indexed
+
+                const yearMatch = (selectedYear === "all" || rowYear === selectedYear);
+                const monthMatch = (selectedMonth === "all" || rowMonth === selectedMonth);
+
+                return yearMatch && monthMatch;
+            });
+            renderTableRows(filteredRows);
+        }
+
+    </script>
+</body>
+</html>
